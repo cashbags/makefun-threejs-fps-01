@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMBERLINE — Foundry 7</title>
+<style>
+  :root {
+    --ember: #ff6a1a;
+    --ember-hot: #ffb347;
+    --teal: #2ec4b6;
+    --ink: #0b0d0f;
+    --panel: rgba(11, 13, 15, 0.78);
+    --line: rgba(255, 255, 255, 0.14);
+    --text: #e8e6e1;
+    --dim: #9aa0a6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--ink); }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--text); }
+  #game-canvas { position: fixed; inset: 0; }
+  #game-canvas canvas { display: block; width: 100%; height: 100%; }
+  .hidden { display: none !important; }
+
+  /* Top bar: round, timer, score */
+  #hud-top {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 18px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 8px 18px; border-radius: 6px; z-index: 5;
+    font-variant-numeric: tabular-nums;
+  }
+  #hud-round { font-size: 12px; letter-spacing: 2px; color: var(--dim); }
+  #hud-timer { font-size: 26px; font-weight: 700; min-width: 74px; text-align: center; }
+  #hud-timer.urgent { color: #ff2a1a; }
+  #hud-score { font-size: 20px; font-weight: 700; }
+  #hud-score .ember { color: var(--ember); }
+  #hud-score .ash { color: #8fa3b8; }
+
+  /* Bottom-left: health + armour */
+  #hud-vitals {
+    position: fixed; left: 18px; bottom: 18px; z-index: 5;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 16px;
+  }
+  #hud-health { font-size: 34px; font-weight: 800; line-height: 1; }
+  #hud-health.low { color: #ff2a1a; }
+  #hud-vitals .label { font-size: 11px; letter-spacing: 2px; color: var(--dim); }
+  #hud-armour { font-size: 15px; color: var(--teal); font-weight: 700; }
+
+  /* Bottom-right: ammo + money */
+  #hud-loadout {
+    position: fixed; right: 18px; bottom: 18px; z-index: 5; text-align: right;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 16px;
+  }
+  #hud-ammo { font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  #hud-money { font-size: 16px; color: var(--ember-hot); font-weight: 700; margin-top: 4px; }
+
+  /* Minimap */
+  #hud-minimap {
+    position: fixed; top: 14px; left: 14px; z-index: 5;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+  }
+
+  /* Kill feed */
+  #hud-feed {
+    position: fixed; top: 118px; right: 14px; z-index: 5; text-align: right;
+    font-size: 13px; line-height: 1.7; color: var(--text);
+    text-shadow: 0 1px 2px #000;
+  }
+  #hud-feed div { background: var(--panel); display: inline-block; padding: 2px 10px; border-radius: 4px; margin-bottom: 4px; }
+
+  /* Bomb status + prompt */
+  #hud-bomb {
+    position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 5;
+    background: var(--panel); border: 1px solid var(--ember);
+    color: var(--ember-hot); font-size: 13px; font-weight: 700;
+    padding: 6px 14px; border-radius: 6px; letter-spacing: 1px;
+  }
+  #hud-prompt {
+    position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%); z-index: 5;
+    font-size: 14px; color: var(--ember-hot); text-shadow: 0 1px 3px #000; letter-spacing: 1px;
+  }
+
+  /* Crosshair: gap is the live spread, set from JS as --gap */
+  #hud-crosshair {
+    position: fixed; left: 50%; top: 50%; z-index: 5; pointer-events: none;
+    --gap: 8px; width: 0; height: 0;
+  }
+  #hud-crosshair .ch { position: absolute; background: #fff; box-shadow: 0 0 2px #000; }
+  #hud-crosshair .t { left: -1px; top: calc(-1 * var(--gap) - 9px); width: 2px; height: 9px; }
+  #hud-crosshair .b { left: -1px; top: var(--gap); width: 2px; height: 9px; }
+  #hud-crosshair .l { top: -1px; left: calc(-1 * var(--gap) - 9px); width: 9px; height: 2px; }
+  #hud-crosshair .r { top: -1px; left: var(--gap); width: 9px; height: 2px; }
+  #hud-crosshair .dot { left: -1px; top: -1px; width: 2px; height: 2px; }
+  #hud-crosshair.scoped .ch { display: none; }
+
+  /* Hitmarker */
+  #hud-hitmarker {
+    position: fixed; left: 50%; top: 50%; z-index: 6; pointer-events: none;
+    width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  }
+  #hud-hitmarker::before, #hud-hitmarker::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%),
+      linear-gradient(-45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%);
+  }
+  #hud-hitmarker.kill::before, #hud-hitmarker.kill::after { filter: drop-shadow(0 0 4px #ff2a1a); }
+  #hud-hitmarker.kill { filter: hue-rotate(-50deg) saturate(3); }
+
+  /* Damage vignette + flash overlay */
+  #hud-vignette {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(255, 30, 10, 0.55) 100%);
+  }
+  #hud-flash {
+    position: fixed; inset: 0; z-index: 7; pointer-events: none; opacity: 0;
+    background: #fff;
+  }
+
+  /* Round banner */
+  #hud-banner {
+    position: fixed; top: 24%; left: 50%; transform: translateX(-50%); z-index: 8;
+    text-align: center; pointer-events: none;
+  }
+  #hud-banner-text { font-size: 40px; font-weight: 800; letter-spacing: 3px; text-shadow: 0 2px 12px #000; }
+  #hud-banner-sub { font-size: 16px; color: var(--ember-hot); margin-top: 6px; text-shadow: 0 1px 6px #000; }
+
+  /* Plant/defuse progress */
+  #hud-channel {
+    position: fixed; bottom: 170px; left: 50%; transform: translateX(-50%); z-index: 5;
+    width: 280px; text-align: center;
+  }
+  #hud-channel-label { font-size: 13px; letter-spacing: 3px; margin-bottom: 6px; color: var(--ember-hot); }
+  #hud-channel-track { height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
+  #hud-channel-fill { height: 100%; width: 0%; background: var(--ember); }
+
+  /* Buy menu */
+  #hud-buy {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 9;
+    width: 420px; background: var(--panel); border: 1px solid var(--ember);
+    border-radius: 8px; padding: 18px;
+  }
+  #hud-buy h2 { font-size: 18px; letter-spacing: 2px; margin-bottom: 4px; }
+  #hud-buy .buy-sub { font-size: 12px; color: var(--dim); margin-bottom: 12px; }
+  #hud-buy-money { font-size: 20px; color: var(--ember-hot); font-weight: 800; margin-bottom: 12px; }
+  .buy-row {
+    display: flex; gap: 10px; align-items: center; width: 100%;
+    background: transparent; border: 1px solid var(--line); color: var(--text);
+    padding: 9px 10px; border-radius: 5px; margin-bottom: 6px; cursor: pointer;
+    font-size: 14px; text-align: left;
+  }
+  .buy-row:hover { border-color: var(--ember); background: rgba(255, 106, 26, 0.12); }
+  .buy-key { color: var(--dim); font-size: 12px; width: 16px; }
+  .buy-name { flex: 1; }
+  .buy-price { color: var(--ember-hot); font-weight: 700; }
+  .buy-owned { color: var(--teal); font-size: 11px; letter-spacing: 1px; }
+
+  /* Start / death overlay */
+  #hud-overlay {
+    position: fixed; inset: 0; z-index: 10; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(5, 6, 8, 0.72); text-align: center; cursor: pointer;
+  }
+  #hud-overlay-title { font-size: 44px; font-weight: 800; letter-spacing: 6px; color: var(--ember); text-shadow: 0 0 24px rgba(255, 106, 26, 0.5); }
+  #hud-overlay-sub { font-size: 15px; color: var(--text); margin-top: 14px; max-width: 640px; line-height: 1.7; }
+  #hud-overlay .hint { margin-top: 26px; font-size: 12px; color: var(--dim); letter-spacing: 2px; }
+</style>
+</head>
+<body>
+  <div id="game-canvas"></div>
+
+  <div id="hud-vignette"></div>
+  <div id="hud-flash"></div>
+
+  <canvas id="hud-minimap" width="180" height="152"></canvas>
+
+  <div id="hud-top">
+    <span id="hud-round">ROUND 1/15</span>
+    <span id="hud-timer">1:40</span>
+    <span id="hud-score"><span class="ember">0</span> — <span class="ash">0</span></span>
+  </div>
+
+  <div id="hud-feed"></div>
+  <div id="hud-bomb" class="hidden"></div>
+  <div id="hud-prompt"></div>
+
+  <div id="hud-crosshair">
+    <div class="ch t"></div><div class="ch b"></div>
+    <div class="ch l"></div><div class="ch r"></div><div class="ch dot"></div>
+  </div>
+  <div id="hud-hitmarker" class="hidden"></div>
+
+  <div id="hud-banner" class="hidden">
+    <div id="hud-banner-text"></div>
+    <div id="hud-banner-sub"></div>
+  </div>
+
+  <div id="hud-channel" class="hidden">
+    <div id="hud-channel-label">PLANTING…</div>
+    <div id="hud-channel-track"><div id="hud-channel-fill"></div></div>
+  </div>
+
+  <div id="hud-vitals">
+    <div class="label">HEALTH</div>
+    <span id="hud-health">100</span>
+    <span id="hud-armour">—</span>
+  </div>
+
+  <div id="hud-loadout">
+    <div id="hud-ammo">30 / 90</div>
+    <div id="hud-money">$800</div>
+  </div>
+
+  <div id="hud-buy" class="hidden">
+    <h2>BUY — FOUNDRY 7</h2>
+    <div class="buy-sub">Freeze time only. Click an item or press its number key.</div>
+    <div id="hud-buy-money">$800</div>
+    <div id="hud-buy-list"></div>
+  </div>
+
+  <div id="hud-overlay">
+    <div id="hud-overlay-title">EMBERLINE — Foundry 7</div>
+    <div id="hud-overlay-sub">Click to play. WASD move · mouse look · LMB fire · R reload · B buy · E plant/defuse · 1/2 weapons · 3 grenade</div>
+    <div class="hint">5V5 · FIRST TO 8 · BOMB AT CRUCIBLE OR CASTING BAY</div>
+  </div>
+
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.min.js" } }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
