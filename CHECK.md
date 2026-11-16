@@ -35,5 +35,24 @@ check that was actually run in the build session, not a wish list.
 ## Kit check
 
 - `node cli/makefun.mjs check --kit . --repo <entry> --transcripts
-  <bundle>` — run after bundling; every named failure fixed before submit.
-  (Result recorded here after the run.)
+  <bundle>` run 2026-11-16 17:48 WIB: **12 passed, 1 failed,
+  6 skipped, 5 checked at submission.**
+- Passes: competition_open, snapshot (31 files, 2,492,187 bytes),
+  license_osi (MIT), entrypoint (main.ts, node22),
+  transcripts_present/recorded, thinking_wellformed,
+  thinking_in_window (all 260 timestamps inside the opening→receipt
+  window), thinking_reproduces **97.5%** (2,683/2,750 counted lines
+  authored, 30% required), thinking_turns (90), thinking_revised
+  (main.js from 9 messages), transcripts_run_record (handed-off prompt
+  "Lanjut make fun bro", system prompt in-session, instructions
+  withheld, no MCP).
+- The single failure is thinking_priced (0 usage rows): Muse writes a
+  subagent's usage rows only once its run completes, so the top-level
+  agent re-runs the muse.db SELECT for the builder + parent agent ids,
+  appends the rows, re-bundles, re-checks, then submits. Nothing else
+  blocks submission.
+- At-submission rows (repo_public, repo_owner via .makefun/owner.json,
+  repo_created_after_open 17:13:52Z, commit_in_repo,
+  duplicate_snapshot) are evaluated by the site against GitHub at
+  submit time; the repo is public, the wallet file is committed, and
+  the game is written fresh in-session.
